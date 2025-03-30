@@ -1,6 +1,6 @@
 import serial
 import mysql.connector
-
+import time
 
 db = mysql.connector.connect(
     host="localhost",        
@@ -13,7 +13,13 @@ cursor = db.cursor()
 
 
 ser = serial.Serial('COM9', 115200, timeout=1)
+arduino = serial.Serial(port='COM10', baudrate=115200, timeout=.1)
 
+def write_read(x):
+    arduino.write(bytes(x, 'utf-8'))  # Send the input to the Arduino
+    time.sleep(0.05)  # Wait for Arduino to process the input
+    data = arduino.readline()  # Read the response from Arduino
+    return data
 
 try:
     while True:
@@ -26,10 +32,11 @@ try:
             result = cursor.fetchone()
 
             if result:
-                authorized = result[0]
-                print(f"{authorized}")
+                authorized = str(result[0])
+                write_read(authorized)
             else:
-                print("not found")
+               print("not found")
+               write_read(str(3))
 
 except KeyboardInterrupt:
     print("")
