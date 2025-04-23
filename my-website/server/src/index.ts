@@ -15,5 +15,5 @@ app.use(express.json());
 app.use('/api/employees', employeeRoutes);
 
 app.listen(port, () => {
-  console.log(`服务器运行在端口 ${port}`);
+  console.log(`SERVER IN ${port}`);
 }); 

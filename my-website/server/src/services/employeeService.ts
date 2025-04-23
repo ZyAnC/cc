@@ -53,6 +53,8 @@ class EmployeeService {
           id: employee.id,
           employee_id: employee.employee_id,
           name: employee.name,
+          primary_phone: employee.primary_phone,
+
           title: employee.title,
           hire_date: employee.hire_date,
           work_title: employee.work_title,

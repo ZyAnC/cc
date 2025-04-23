@@ -33,7 +33,7 @@ export interface Employee {
   id: number;
   employee_id: string;
   name: string;
-  title: string;
+  primary_phone: string;
   hire_date: Date;
   work_title: string;
   active_status: boolean;
@@ -53,21 +53,28 @@ export interface EmployeeRole {
 }
 
 // 业务逻辑接口
-export interface EmployeeWithDetails {
+export interface TrainingCertification {
   id: number;
-  employee_id: string;
-  name: string;
-  title: string;
-  hire_date: string;
-  active_status: boolean;
-  role?: EmployeeRole;
-  roles?: EmployeeRole[];
-  access_authorizations?: EmployeeRole[];
+  employee_id: number;
+  certification: string;
+  description: string;
+  training_description: string;
+  status: 'current' | 'expired';
+  completion_time: string;
+  expiry_date: string;
+}
+
+export interface EmployeeWithDetails extends BaseEmployee {
+  role?: BaseEmployeeRole;
+  roles?: BaseEmployeeRole[];
+  access_authorizations?: BaseEmployeeRole[];
+  training_certifications?: TrainingCertification[];
+  primary_phone?: string;
 }
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
-class EmployeeService {
+export class EmployeeService {
   async getAllEmployees(): Promise<EmployeeWithDetails[]> {
     try {
       const response = await fetch(`${API_BASE_URL}/employees`);
@@ -107,7 +114,24 @@ class EmployeeService {
     }
   }
 
-  async createEmployee(employeeData: Partial<Employee>, roleData?: Partial<EmployeeRole>): Promise<number> {
+  async createEmployee(
+    employeeData: {
+      name: string;
+      employee_id: string;
+      primary_phone: string;
+      hire_date: string;
+      active_status: number;
+    },
+    roleData: {
+      job_title: string;
+      department: string;
+      division: string;
+      location: string;
+      zone_access: string;
+      reporting_officer: string;
+      authorized: boolean;
+    }
+  ): Promise<EmployeeWithDetails> {
     try {
       const response = await fetch(`${API_BASE_URL}/employees`, {
         method: 'POST',
@@ -116,13 +140,14 @@ class EmployeeService {
         },
         body: JSON.stringify({ employeeData, roleData }),
       });
+
       if (!response.ok) {
         throw new Error('创建员工失败');
       }
-      const result = await response.json();
-      return result.id;
+
+      return await response.json();
     } catch (error) {
-      console.error('Error creating employee:', error);
+      console.error('创建员工时出错:', error);
       throw error;
     }
   }
@@ -177,6 +202,19 @@ class EmployeeService {
       }
     } catch (error) {
       console.error('Error updating role authorization:', error);
+      throw error;
+    }
+  }
+
+  async getEmployeeTraining(employeeId: number): Promise<TrainingCertification[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/employees/${employeeId}/training`);
+      if (!response.ok) {
+        throw new Error('获取培训认证信息失败');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('获取培训认证信息时出错:', error);
       throw error;
     }
   }
