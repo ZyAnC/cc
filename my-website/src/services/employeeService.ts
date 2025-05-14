@@ -33,7 +33,7 @@ export interface Employee {
   id: number;
   employee_id: string;
   name: string;
-  primary_phone: string;
+  primary_phone?: string;
   hire_date: Date;
   work_title: string;
   active_status: boolean;
@@ -64,12 +64,12 @@ export interface TrainingCertification {
   expiry_date: string;
 }
 
-export interface EmployeeWithDetails extends BaseEmployee {
-  role?: BaseEmployeeRole;
-  roles?: BaseEmployeeRole[];
-  access_authorizations?: BaseEmployeeRole[];
+export interface EmployeeWithDetails extends Employee {
+  role?: EmployeeRole;
+  roles?: EmployeeRole[];
+  access_authorizations?: EmployeeRole[];
   training_certifications?: TrainingCertification[];
-  primary_phone?: string;
+  profile?: string;
 }
 
 const API_BASE_URL = 'http://localhost:3001/api';
@@ -114,24 +114,7 @@ export class EmployeeService {
     }
   }
 
-  async createEmployee(
-    employeeData: {
-      name: string;
-      employee_id: string;
-      primary_phone: string;
-      hire_date: string;
-      active_status: number;
-    },
-    roleData: {
-      job_title: string;
-      department: string;
-      division: string;
-      location: string;
-      zone_access: string;
-      reporting_officer: string;
-      authorized: boolean;
-    }
-  ): Promise<EmployeeWithDetails> {
+  async createEmployee(employeeData: Partial<Employee>, roleData?: Partial<EmployeeRole>): Promise<number> {
     try {
       const response = await fetch(`${API_BASE_URL}/employees`, {
         method: 'POST',
@@ -142,12 +125,13 @@ export class EmployeeService {
       });
 
       if (!response.ok) {
-        throw new Error('创建员工失败');
+        throw new Error('Failed to create employee');
       }
 
-      return await response.json();
+      const id = await response.json();
+      return Number(id); // 确保返回数字类型
     } catch (error) {
-      console.error('创建员工时出错:', error);
+      console.error('Error creating employee:', error);
       throw error;
     }
   }

@@ -11,6 +11,7 @@ interface BaseEmployee {
   active_status: boolean;
   created_at: Date;
   updated_at: Date;
+  profile: string;
 }
 
 interface BaseEmployeeRole {
@@ -54,13 +55,13 @@ class EmployeeService {
           employee_id: employee.employee_id,
           name: employee.name,
           primary_phone: employee.primary_phone,
-
           title: employee.title,
           hire_date: employee.hire_date,
           work_title: employee.work_title,
           active_status: employee.active_status,
           created_at: employee.created_at,
           updated_at: employee.updated_at,
+          profile: employee.profile,
           role: roles[0],
           roles: roles,
           access_authorizations: roles
@@ -102,6 +103,7 @@ class EmployeeService {
         active_status: employee.active_status,
         created_at: employee.created_at,
         updated_at: employee.updated_at,
+        profile: employee.profile,
         role: roles[0],
         roles: roles,
         access_authorizations: roles
@@ -132,7 +134,13 @@ class EmployeeService {
       }
 
       await connection.commit();
-      return employeeId;
+
+      const [employees] = await connection.query<Employee[]>(
+        `SELECT * FROM Employee WHERE id = ?`,
+        [employeeId]
+      );
+
+      return Number(employeeId);
     } catch (error) {
       await connection.rollback();
       console.error('Error creating employee:', error);

@@ -1,8 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { Input, Row, Col, Typography, Space, message, Table, Switch, Select, Button, Modal, Form, DatePicker } from 'antd';
-import { SearchOutlined, PlusOutlined } from '@ant-design/icons';
+import { Input, Row, Col, Typography, Space, message, Table, Switch, Select, Button, Modal, Form, DatePicker, Avatar, Upload, Tag, Tooltip } from 'antd';
+import { SearchOutlined, PlusOutlined, UserOutlined, UploadOutlined, CheckCircleFilled, CloseCircleFilled, FireFilled, ThunderboltFilled, ExperimentFilled } from '@ant-design/icons';
 import { employeeService, EmployeeWithDetails, EmployeeRole, TrainingCertification } from '../../services/employeeService';
 import { useParams, useLocation } from 'react-router-dom';
+import type { RcFile } from 'antd/es/upload/interface';
+// 导入图片
+import clothes1 from '../../assets/clothes1.jpg';
+import clothes2 from '../../assets/clothes2.jpg';
+import clothes3 from '../../assets/clothes3.jpg';
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -34,21 +39,66 @@ const Employee: React.FC = () => {
   const [form] = Form.useForm();
   const [trainingData, setTrainingData] = useState<TrainingCertification[]>([]);
   const { type } = useParams<{ type: string }>();
+  const [customInputs, setCustomInputs] = useState({
+    job_title: false,
+    department: false,
+    division: false,
+    zone_access: false,
+    reporting_officer: false,
+    location: false
+  });
+  const [imageUrl, setImageUrl] = useState<string>();
+  const [uploadedFile, setUploadedFile] = useState<RcFile | null>(null);
+  const [employees, setEmployees] = useState<EmployeeWithDetails[]>([]);
+
+  // 预定义选项
+  const workTitleOptions = ['CNC Operator', 'Millwright', 'Assembly Technician', 'Process Technician', 'Manager', 'Other'];
+  const departmentOptions = ['Milling', 'Production', 'Software', 'Auto', 'Other'];
+  const divisionOptions = ['A', 'B', 'Other'];
+  const zoneAccessOptions = ['1', '2', 'Other'];
+  const reportingOfficerOptions = ['Jessica', 'Dominik', 'Other'];
+  const locationOptions = ['Helsinki', 'Stockholm', 'Other'];
+
+  // 获取所有员工
+  const fetchEmployees = async () => {
+    try {
+      const allEmployees = await employeeService.getAllEmployees();
+      setEmployees(allEmployees);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+      message.error('获取员工列表失败');
+    }
+  };
+
+  const handleCustomOptionClick = (field: string) => {
+    setCustomInputs(prev => ({
+      ...prev,
+      [field]: true
+    }));
+    form.setFieldsValue({
+      [field]: ''
+    });
+  };
 
   useEffect(() => {
     // 添加事件监听
     const handleEmployeeSelected = (event: CustomEvent<EmployeeWithDetails>) => {
-    
+      console.log('Selected employee data:', event.detail);
+      console.log('Profile path:', event.detail.profile);
       setSelectedEmployee(event.detail);
     };
 
     window.addEventListener('employeeSelected', handleEmployeeSelected as EventListener);
+    
+    // 初始化时获取员工列表，但不设置selectedEmployee
+    fetchEmployees();
 
     return () => {
       window.removeEventListener('employeeSelected', handleEmployeeSelected as EventListener);
     };
   }, []);
 
+  // 监听 selectedEmployee 变化
   useEffect(() => {
     if (selectedEmployee && type === 'training') {
       fetchTrainingData();
@@ -182,19 +232,58 @@ const Employee: React.FC = () => {
 
   const handleModalCancel = () => {
     setIsModalVisible(false);
+    setImageUrl(undefined);
+    setUploadedFile(null);
+    setCustomInputs({
+      job_title: false,
+      department: false,
+      division: false,
+      zone_access: false,
+      reporting_officer: false,
+      location: false
+    });
     form.resetFields();
   };
 
   const handleModalOk = async () => {
     try {
       const values = await form.validateFields();
+      setLoading(true);
+      
+      // 处理图片上传
+      let profilePath = '';
+      if (uploadedFile) {
+        const formData = new FormData();
+        formData.append('file', uploadedFile);
+
+        try {
+          const uploadResponse = await fetch('http://localhost:3001/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (!uploadResponse.ok) {
+            throw new Error('Failed to upload image');
+          }
+          
+          const uploadResult = await uploadResponse.json();
+          profilePath = uploadResult.path;
+          console.log('Upload successful, profile path:', profilePath);
+        } catch (error) {
+          console.error('Error uploading image:', error);
+          message.error('Failed to upload image');
+          return;
+        }
+      }
+
       const formattedValues = {
         employeeData: {
           name: values.name,
           employee_id: values.employee_id,
           primary_phone: values.primary_phone,
           hire_date: values.hire_date.format('YYYY-MM-DD'),
-          active_status: 1
+          active_status: true,
+          profile: profilePath
         },
         roleData: {
           job_title: values.job_title,
@@ -206,18 +295,62 @@ const Employee: React.FC = () => {
           authorized: true
         }
       };
+
+      console.log('Creating employee with data:', formattedValues);
       
-      await employeeService.createEmployee(formattedValues.employeeData, formattedValues.roleData);
-      message.success('新员工创建成功');
-      setIsModalVisible(false);
-      form.resetFields();
+      const newEmployeeId = await employeeService.createEmployee(formattedValues.employeeData, formattedValues.roleData);
+      console.log('New employee created with ID:', newEmployeeId);
       
-      // 刷新员工列表
-      const updatedEmployees = await employeeService.getAllEmployees();
-      setSelectedEmployee(updatedEmployees[0]); // 选择新创建的员工
+      message.success('Employee created successfully');
+      handleModalCancel();
+      
+      // 重新获取员工列表
+      try {
+        const updatedEmployees = await employeeService.getAllEmployees();
+        console.log('Updated employees list:', updatedEmployees);
+        setEmployees(updatedEmployees);
+        
+        // 找到并选中新创建的员工
+        const newEmployee = updatedEmployees.find(emp => Number(emp.id) === Number(newEmployeeId));
+        console.log('Looking for employee with ID:', newEmployeeId, 'Type:', typeof newEmployeeId);
+        console.log('Found employee:', newEmployee);
+        
+        if (newEmployee) {
+          console.log('Setting selected employee:', newEmployee);
+          setSelectedEmployee(newEmployee);
+          
+          // 触发选中事件
+          const event = new CustomEvent('employeeSelected', { detail: newEmployee });
+          window.dispatchEvent(event);
+
+          // 强制更新选中的员工
+          window.dispatchEvent(new CustomEvent('forceUpdateEmployee', { detail: newEmployee }));
+        } else {
+          console.error('Could not find newly created employee in updated list. ID:', newEmployeeId);
+          // 如果没找到，尝试重新获取一次
+          setTimeout(async () => {
+            const retryEmployees = await employeeService.getAllEmployees();
+            const retryEmployee = retryEmployees.find(emp => Number(emp.id) === Number(newEmployeeId));
+            if (retryEmployee) {
+              console.log('Found employee on retry:', retryEmployee);
+              setSelectedEmployee(retryEmployee);
+              window.dispatchEvent(new CustomEvent('employeeSelected', { detail: retryEmployee }));
+            }
+          }, 1000);
+        }
+      } catch (error) {
+        console.error('Error fetching updated employee list:', error);
+        message.error('Failed to refresh employee list');
+      }
     } catch (error) {
-      message.error('创建失败，请检查表单');
-      console.error('创建员工时出错:', error);
+      if (error instanceof Error) {
+        message.error(error.message);
+      } else {
+        message.error('Failed to create employee');
+      }
+      console.error('Error creating employee:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -262,23 +395,57 @@ const Employee: React.FC = () => {
     setIsDetailModalVisible(true);
   };
 
+  // 处理头像上传
+  const handleUpload = async (file: RcFile) => {
+    try {
+      // 验证文件类型
+      const isImage = file.type.startsWith('image/');
+      if (!isImage) {
+        message.error('You can only upload image files!');
+        return false;
+      }
+
+      // 验证文件大小 (小于 2MB)
+      const isLt2M = file.size / 1024 / 1024 < 2;
+      if (!isLt2M) {
+        message.error('Image must be smaller than 2MB!');
+        return false;
+      }
+
+      // 预览图片
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImageUrl(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+      
+      // 保存文件对象以供后续提交
+      setUploadedFile(file);
+      return false; // 阻止自动上传
+    } catch (error) {
+      message.error('Preview failed');
+      return false;
+    }
+  };
+
   const renderEmployeeInfo = () => (
     <>
       {/* Basic Information */}
       <Space direction="vertical" size={24} style={{ width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+         
+        </div>
         {/* First Row - Labels */}
         <Row gutter={[16, 0]}>
-        <Col span={8}>
+          <Col span={8}>
             <Text strong style={{ color: '#000', fontSize: '14px' }}>Employee ID</Text>
           </Col>
           <Col span={8}>
             <Text strong style={{ color: '#000', fontSize: '14px' }}>Name</Text>
           </Col>
-         
           <Col span={8}>
             <Text strong style={{ color: '#000', fontSize: '14px' }}>Hire Date</Text>
           </Col>
-
         </Row>
 
         {/* First Row - Values */}
@@ -309,7 +476,6 @@ const Employee: React.FC = () => {
               <Text>{selectedEmployee?.name || '-'}</Text>
             </div>
           </Col>
-         
           <Col span={8}>
             <div style={{ 
               backgroundColor: '#f5f5f5', 
@@ -460,9 +626,9 @@ const Employee: React.FC = () => {
   const renderAccessInfo = () => {
     const columns = [
       { 
-        title: 'Zonal Access', 
-        dataIndex: 'zonal_access', 
-        key: 'zonal_access',
+        title: 'Job Title', 
+        dataIndex: 'job_title', 
+        key: 'job_title',
         align: 'left' as const,
         render: (text: string) => <span style={{ color: '#333' }}>{text}</span>
       },
@@ -488,16 +654,12 @@ const Employee: React.FC = () => {
         render: (text: string) => <span style={{ color: '#333' }}>{text}</span>
       },
       { 
-        title: 'Job Title', 
-        dataIndex: 'job_title', 
-        key: 'job_title',
+        title: 'Zonal Access', 
+        dataIndex: 'zonal_access', 
+        key: 'zonal_access',
         align: 'left' as const,
         render: (text: string) => <span style={{ color: '#333' }}>{text}</span>
       },
-     
-     
-    
-     
       { 
         title: 'Authorized', 
         dataIndex: 'authorized', 
@@ -513,6 +675,137 @@ const Employee: React.FC = () => {
       }
     ];
 
+    // 模拟产品数据
+    const mockProducts = [
+      {
+        id: '1V5260',
+        name: 'ANTTI OVERALL M BLACK/SGREY',
+        image: clothes1,
+        approved: true,
+        features: {
+          flameRetardant: true,
+          antiStatic: true,
+          chemicalResistant: true
+        }
+      },
+      {
+        id: '1L0746',
+        name: 'CE WALT WINTER JACKET CL2 FLY',
+        image: clothes2,
+        approved: false,
+        features: {
+          flameRetardant: true,
+          antiStatic: false,
+          chemicalResistant: true
+        }
+      },
+      {
+        id: '1L1473',
+        name: 'WARD WINTER HOOD CHARCOAL',
+        image: clothes3,
+        approved: true,
+        features: {
+          flameRetardant: false,
+          antiStatic: true,
+          chemicalResistant: true
+        }
+      }
+    ];
+
+    // 展开行的渲染函数
+    const expandedRowRender = () => {
+      const productColumns = [
+        {
+          title: 'Product',
+          dataIndex: 'image',
+          key: 'image',
+          width: 120,
+          render: (image: string) => (
+            <img 
+              src={image} 
+              alt="Product" 
+              style={{ 
+                width: '100px', 
+                height: '100px', 
+                objectFit: 'cover',
+                borderRadius: '4px'
+              }} 
+            />
+          ),
+        },
+        {
+          title: 'CNC Milling Machinery Approval',
+          key: 'approval',
+          width: 250,
+          render: (_: any, record: any) => (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {record.approved ? (
+                <>
+                  <CheckCircleFilled style={{ color: '#52c41a', fontSize: '24px' }} />
+                  <span style={{ color: '#52c41a', fontWeight: 'bold' }}>Approved</span>
+                </>
+              ) : (
+                <>
+                  <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: '24px' }} />
+                  <span style={{ color: '#ff4d4f', fontWeight: 'bold' }}>Not Approved</span>
+                </>
+              )}
+            </div>
+          ),
+        },
+        {
+          title: 'Safety Features',
+          key: 'features',
+          render: (_: any, record: any) => (
+            <Space size="middle">
+              <Tooltip title="Flame Retardant">
+                <Tag 
+                  color={record.features.flameRetardant ? '#f50' : '#d9d9d9'} 
+                  icon={<FireFilled />}
+                  style={{ padding: '4px 8px', fontSize: '16px' }}
+                >
+                  FR
+                </Tag>
+              </Tooltip>
+              <Tooltip title="Anti-Static">
+                <Tag 
+                  color={record.features.antiStatic ? '#2db7f5' : '#d9d9d9'} 
+                  icon={<ThunderboltFilled />}
+                  style={{ padding: '4px 8px', fontSize: '16px' }}
+                >
+                  AS
+                </Tag>
+              </Tooltip>
+              <Tooltip title="Chemical Resistant">
+                <Tag 
+                  color={record.features.chemicalResistant ? '#87d068' : '#d9d9d9'} 
+                  icon={<ExperimentFilled />}
+                  style={{ padding: '4px 8px', fontSize: '16px' }}
+                >
+                  CR
+                </Tag>
+              </Tooltip>
+            </Space>
+          ),
+        }
+      ];
+
+      return (
+        <div style={{ padding: '0 20px' }}>
+          <div style={{ marginBottom: '10px' }}>
+            <Text strong>Products in use</Text>
+            <Text style={{ marginLeft: '10px', color: '#666' }}>3 Products</Text>
+          </div>
+          <Table
+            columns={productColumns}
+            dataSource={mockProducts}
+            pagination={false}
+            size="small"
+          />
+        </div>
+      );
+    };
+
     return (
       <div style={{ marginTop: '24px' }}>
         <Title level={3} style={{ color: '#003f72', textAlign: 'left', fontWeight: 'bold' }}>Access Authorization</Title>
@@ -521,6 +814,10 @@ const Employee: React.FC = () => {
           columns={columns} 
           pagination={false}
           style={{ marginTop: '16px' }}
+          expandable={{
+            expandedRowRender,
+            expandRowByClick: true,
+          }}
         />
       </div>
     );
@@ -670,6 +967,42 @@ const Employee: React.FC = () => {
     );
   };
 
+  // 示例任务数据
+  const exampleTasks = [
+    { id: 1, name: 'Assembly', description: 'Assembling machines', status: 'Pending', due_date: '2025-06-30' },
+    { id: 2, name: 'Safety training', description: 'Complete the annual safety training', status: 'Completed', due_date: '2024-05-15' },
+    { id: 3, name: 'Garment cutting', description: 'Garment cutting', status: 'Pending', due_date: '2025-07-10' }
+  ];
+
+  const renderTasksInfo = () => {
+    const columns = [
+      { title: 'Task Name', dataIndex: 'name', key: 'name' },
+      { title: 'Description', dataIndex: 'description', key: 'description' },
+      { title: 'Status', dataIndex: 'status', key: 'status',
+        render: (status: string) => {
+          let color = '#faad14';
+          if (status === 'Completed') color = '#52c41a';
+          if (status === 'Pending') color = '#faad14';
+          if (status === 'No tasks') color = '#bfbfbf';
+          return <span style={{ color, fontWeight: 600 }}>{status}</span>;
+        }
+      },
+      { title: 'Due Date', dataIndex: 'due_date', key: 'due_date' }
+    ];
+    return (
+      <div style={{ marginTop: '24px' }}>
+        <Title level={3} style={{ color: '#003f72', textAlign: 'left', fontWeight: 'bold' }}>Tasks</Title>
+        <Table
+          dataSource={exampleTasks.length ? exampleTasks : [{ id: 0, name: '-', description: '-', status: 'No tasks', due_date: '-' }]}
+          columns={columns}
+          pagination={false}
+          rowKey="id"
+          style={{ marginTop: '16px' }}
+        />
+      </div>
+    );
+  };
+
   const renderContent = () => {
     // 始终显示基本信息
     const content = [
@@ -697,25 +1030,53 @@ const Employee: React.FC = () => {
           {renderTrainingInfo()}
         </React.Fragment>
       );
+    } else if (type === 'tasks') {
+      content.push(
+        <React.Fragment key="tasks-info">
+          {renderTasksInfo()}
+        </React.Fragment>
+      );
     }
 
     return content;
   };
 
+  // 在 useEffect 区域添加事件监听
+  useEffect(() => {
+    const openModal = () => setIsModalVisible(true);
+    window.addEventListener('openNewEmployeeModal', openModal);
+    return () => window.removeEventListener('openNewEmployeeModal', openModal);
+  }, []);
+
   return (
     <div style={{ padding: '24px' }}>
-      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'flex-end' }}>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />} 
-          onClick={handleNewEmployee}
-          style={{ backgroundColor: '#003f72' }}
-        >
-          New employee
-        </Button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ width: 64, height: 64, borderRadius: '50%', overflow: 'hidden' }}>
+            {selectedEmployee?.profile ? (
+              <img
+                src={`http://localhost:3001${selectedEmployee.profile}`}
+                alt={selectedEmployee.name}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  objectPosition: 'center top'
+                }}
+                onError={(e) => {
+                  console.log('Failed to load avatar for employee:', selectedEmployee);
+                  e.currentTarget.src = ''; // 清除错误的图片
+                  e.currentTarget.style.display = 'none'; // 隐藏错误的图片
+                }}
+              />
+            ) : (
+              <Avatar size={64} icon={<UserOutlined />} />
+            )}
+          </div>
+        </div>
+        {renderContent()}
       </div>
-      {renderContent()}
-
+      
       <Modal
         title="New Employee"
         visible={isModalVisible}
@@ -728,11 +1089,49 @@ const Employee: React.FC = () => {
           layout="vertical"
         >
           <Row gutter={16}>
+            <Col span={24}>
+              <Form.Item
+                name="profile"
+                label="Profile Picture"
+               
+              >
+                <Upload
+                  name="profile"
+                  listType="picture-card"
+                  showUploadList={false}
+                  beforeUpload={handleUpload}
+                  maxCount={1}
+                >
+                  {imageUrl ? (
+                    <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+                      <img
+                        src={imageUrl}
+                        alt="avatar"
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: 'center top'
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <PlusOutlined />
+                      <div style={{ marginTop: 8 }}>Upload</div>
+                    </div>
+                  )}
+                </Upload>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
             <Col span={12}>
               <Form.Item
                 name="name"
                 label="Name"
-                rules={[{ required: true, message: '请输入姓名' }]}
+                rules={[{ required: true, message: 'Please input name' }]}
               >
                 <Input />
               </Form.Item>
@@ -741,7 +1140,7 @@ const Employee: React.FC = () => {
               <Form.Item
                 name="employee_id"
                 label="Employee ID"
-                rules={[{ required: true, message: '请输入员工ID' }]}
+                rules={[{ required: true, message: 'Please input employee ID' }]}
               >
                 <Input />
               </Form.Item>
@@ -762,7 +1161,7 @@ const Employee: React.FC = () => {
               <Form.Item
                 name="hire_date"
                 label="Hire Date"
-                rules={[{ required: true, message: '请选择入职日期' }]}
+                rules={[{ required: true, message: 'Please select hire date' }]}
               >
                 <DatePicker style={{ width: '100%' }} />
               </Form.Item>
@@ -774,18 +1173,46 @@ const Employee: React.FC = () => {
               <Form.Item
                 name="job_title"
                 label="Work Title"
-                rules={[{ required: true, message: '请输入职位' }]}
+                rules={[{ required: true, message: 'Please select or input work title' }]}
               >
-                <Input />
+                {customInputs.job_title ? (
+                  <Input />
+                ) : (
+                  <Select
+                    onChange={(value) => {
+                      if (value === 'Other') {
+                        handleCustomOptionClick('job_title');
+                      }
+                    }}
+                  >
+                    {workTitleOptions.map(option => (
+                      <Option key={option} value={option}>{option}</Option>
+                    ))}
+                  </Select>
+                )}
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item
                 name="department"
                 label="Department"
-                rules={[{ required: true, message: '请输入部门' }]}
+                rules={[{ required: true, message: 'Please select or input department' }]}
               >
-                <Input />
+                {customInputs.department ? (
+                  <Input />
+                ) : (
+                  <Select
+                    onChange={(value) => {
+                      if (value === 'Other') {
+                        handleCustomOptionClick('department');
+                      }
+                    }}
+                  >
+                    {departmentOptions.map(option => (
+                      <Option key={option} value={option}>{option}</Option>
+                    ))}
+                  </Select>
+                )}
               </Form.Item>
             </Col>
           </Row>
@@ -795,18 +1222,46 @@ const Employee: React.FC = () => {
               <Form.Item
                 name="division"
                 label="Division"
-                rules={[{ required: true, message: '请输入分部' }]}
+                rules={[{ required: true, message: 'Please select or input division' }]}
               >
-                <Input />
+                {customInputs.division ? (
+                  <Input />
+                ) : (
+                  <Select
+                    onChange={(value) => {
+                      if (value === 'Other') {
+                        handleCustomOptionClick('division');
+                      }
+                    }}
+                  >
+                    {divisionOptions.map(option => (
+                      <Option key={option} value={option}>{option}</Option>
+                    ))}
+                  </Select>
+                )}
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item
                 name="location"
                 label="Location"
-                rules={[{ required: true, message: '请输入位置' }]}
+                rules={[{ required: true, message: 'Please select or input location' }]}
               >
-                <Input />
+                {customInputs.location ? (
+                  <Input />
+                ) : (
+                  <Select
+                    onChange={(value) => {
+                      if (value === 'Other') {
+                        handleCustomOptionClick('location');
+                      }
+                    }}
+                  >
+                    {locationOptions.map(option => (
+                      <Option key={option} value={option}>{option}</Option>
+                    ))}
+                  </Select>
+                )}
               </Form.Item>
             </Col>
           </Row>
@@ -816,18 +1271,46 @@ const Employee: React.FC = () => {
               <Form.Item
                 name="zone_access"
                 label="Zone Access"
-                rules={[{ required: true, message: '请输入区域访问权限' }]}
+                rules={[{ required: true, message: 'Please select or input zone access' }]}
               >
-                <Input />
+                {customInputs.zone_access ? (
+                  <Input />
+                ) : (
+                  <Select
+                    onChange={(value) => {
+                      if (value === 'Other') {
+                        handleCustomOptionClick('zone_access');
+                      }
+                    }}
+                  >
+                    {zoneAccessOptions.map(option => (
+                      <Option key={option} value={option}>{option}</Option>
+                    ))}
+                  </Select>
+                )}
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item
                 name="reporting_officer"
                 label="Reporting Officer"
-                rules={[{ required: true, message: '请输入汇报主管' }]}
+                rules={[{ required: true, message: 'Please select or input reporting officer' }]}
               >
-                <Input />
+                {customInputs.reporting_officer ? (
+                  <Input />
+                ) : (
+                  <Select
+                    onChange={(value) => {
+                      if (value === 'Other') {
+                        handleCustomOptionClick('reporting_officer');
+                      }
+                    }}
+                  >
+                    {reportingOfficerOptions.map(option => (
+                      <Option key={option} value={option}>{option}</Option>
+                    ))}
+                  </Select>
+                )}
               </Form.Item>
             </Col>
           </Row>

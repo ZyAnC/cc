@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout as AntLayout, Menu, Button, Space, Divider, Input, message } from 'antd';
+import { Layout as AntLayout, Menu, Button, Space, Divider, Input, message, Typography } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   HomeOutlined,
@@ -18,8 +18,10 @@ import {
   ShoppingOutlined,
 } from '@ant-design/icons';
 import { employeeService, EmployeeWithDetails } from '../../services/employeeService';
+import logo from '../../assets/Lindstrom_logo_RGB.jpg';
 
 const { Header, Content, Sider } = AntLayout;
+const { Text } = Typography;
 
 const Layout: React.FC = () => {
   const navigate = useNavigate();
@@ -29,6 +31,9 @@ const Layout: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeWithDetails | null>(null);
   const [employees, setEmployees] = useState<EmployeeWithDetails[]>([]);
+  const [collapsed, setCollapsed] = useState(false);
+  const [searchResults, setSearchResults] = useState<EmployeeWithDetails[]>([]);
+  const [showResults, setShowResults] = useState(false);
 
   useEffect(() => {
     fetchEmployeeData();
@@ -45,16 +50,32 @@ const Layout: React.FC = () => {
 
   const handleSearch = (value: string) => {
     setSearchText(value);
-    const filteredEmployee = employees.find(emp => 
-      emp.name.toLowerCase().includes(value.toLowerCase()) ||
-      String(emp.employee_id).toLowerCase().includes(value.toLowerCase())
-    );
-    if (filteredEmployee) {
-      setSelectedEmployee(filteredEmployee);
-      // 触发事件通知 Employee 组件更新
-      const event = new CustomEvent('employeeSelected', { detail: filteredEmployee });
-      window.dispatchEvent(event);
+    if (value.trim() === '') {
+      setSearchResults([]);
+      setShowResults(false);
+      setSelectedEmployee(null);
+      return;
     }
+
+    const results = employees.filter(employee => 
+      employee.name.toLowerCase().includes(value.toLowerCase()) ||
+      employee.employee_id.toLowerCase().includes(value.toLowerCase())
+    );
+    setSearchResults(results);
+    setShowResults(true);
+    
+    if (results.length === 1) {
+      handleSelectEmployee(results[0]);
+    }
+  };
+
+  const handleSelectEmployee = (employee: EmployeeWithDetails) => {
+    setSearchText('');
+    setShowResults(false);
+    setSelectedEmployee(employee);
+    // 触发自定义事件通知其他组件
+    const event = new CustomEvent('employeeSelected', { detail: employee });
+    window.dispatchEvent(event);
   };
 
   const handleButtonClick = (type: string) => {
@@ -122,23 +143,24 @@ const Layout: React.FC = () => {
   ];
 
   const handleMenuClick = (key: string) => {
-    // 暂时禁用 locations 的点击功能
-    if (key === 'locations') {
-      return; // 直接返回，不执行任何操作
-    }
+    // // 暂时禁用 locations 的点击功能
+    // if (key === 'locations') {
+    //   return; // 直接返回，不执行任何操作
+    // }
     navigate(`/${key}`);
   };
 
   const renderBottomButtons = () => {
     if (location.pathname.startsWith('/employee')) {
       return (
-        <Space direction="vertical" style={{ width: '100%', padding: '0 16px' }}>
-          <div style={{ marginBottom: '16px' }}>
+        <Space direction="vertical" style={{ width: '100%', padding: '0 16px', position: 'relative' }}>
+          <div style={{ marginBottom: '16px', position: 'relative' }}>
             <Input
               prefix={<SearchOutlined />}
-              placeholder="Employee Lookup"
+              placeholder="Search by name or employee ID"
               value={searchText}
               onChange={e => handleSearch(e.target.value)}
+              onFocus={() => setShowResults(true)}
               style={{ 
                 borderRadius: '20px',
                 height: '32px',
@@ -146,7 +168,76 @@ const Layout: React.FC = () => {
                 border: 'none'
               }}
             />
+            {showResults && searchResults.length > 0 && (
+              <div 
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  backgroundColor: 'white',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                  borderRadius: '4px',
+                  zIndex: 1000,
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  marginTop: '4px'
+                }}
+              >
+                {searchResults.map(employee => (
+                  <div
+                    key={employee.id}
+                    onClick={() => handleSelectEmployee(employee)}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid #f0f0f0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.backgroundColor = '#f5f5f5';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.backgroundColor = 'white';
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '50%',
+                        backgroundColor: '#1890ff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontSize: '12px'
+                      }}
+                    >
+                      {employee.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>{employee.name}</div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>
+                        {employee.role?.job_title || 'No title'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            style={{ backgroundColor: '#003f72', marginBottom: 12 }}
+            block
+            onClick={() => window.dispatchEvent(new Event('openNewEmployeeModal'))}
+          >
+            New employee
+          </Button>
           <Button 
             block 
             style={{ 
@@ -237,25 +328,39 @@ const Layout: React.FC = () => {
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
-      <Header style={{ 
-        background: '#fff', 
-        padding: '0 16px', 
-        display: 'flex', 
-        alignItems: 'center',
-        borderBottom: '1px solid #e8e8e8',
-        height: '48px'
-      }}>
-        <HomeOutlined 
-          style={{ fontSize: '20px', marginRight: '24px', cursor: 'pointer' }} 
-          onClick={() => navigate('/')}
-        />
-        <Menu
-          mode="horizontal"
-          selectedKeys={[location.pathname.split('/')[1] || 'home']}
-          items={navItems}
-          style={{ flex: 1, border: 'none' }}
-        />
-        <ShoppingCartOutlined style={{ fontSize: '20px' }} />
+      <Header style={{ background: '#fff', padding: 0, borderBottom: '1px solid #e8e8e8', height: '96px', display: 'block' }}>
+        {/* 第一行：logo+主导航+用户信息 */}
+        <div style={{ display: 'flex', alignItems: 'center', height: 48, padding: '0 24px', borderBottom: '1px solid #f0f0f0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', minWidth: 180 }}>
+            <img src={logo} alt="Lindström Logo" style={{ height: 32, marginRight: 8 }} />
+           
+          </div>
+          
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 32, marginLeft: 40 }}>
+            <span style={{ fontWeight: 500, fontSize: 16, color: '#222', cursor: 'pointer' }}>Lindström</span>
+            <span style={{ fontWeight: 500, fontSize: 16, color: '#222', cursor: 'pointer' }}>Store</span>
+            <span style={{ fontWeight: 500, fontSize: 16, color: '#fff', background: '#00395d', borderRadius: 4, padding: '4px 16px', cursor: 'pointer' }}>eLindström</span>
+            <span style={{ fontWeight: 500, fontSize: 16, color: '#222', cursor: 'pointer' }}>eComforta</span>
+          </div>
+          <div style={{ minWidth: 320, textAlign: 'right', fontSize: 14 }}>
+            <span style={{ color: '#888' }}>Welcome, </span>
+            <span style={{ fontWeight: 600, color: '#222' }}>Manager</span>
+            <span style={{ color: '#888', margin: '0 8px' }}>|</span>
+            <span style={{ color: '#00395d', fontWeight: 500, cursor: 'pointer' }}>Sign Out</span>
+          </div>
+        </div>
+        {/* 第二行：功能导航 */}
+        <div style={{ display: 'flex', alignItems: 'center', height: 48, padding: '0 16px' }}>
+          <HomeOutlined style={{ fontSize: 20, marginRight: 16, color: '#222' }} onClick={() => navigate('/')} />
+          <Menu
+            mode="horizontal"
+            selectedKeys={[location.pathname.split('/')[1] || 'accounts']}
+            items={navItems}
+            style={{ flex: 1, border: 'none', fontWeight: 600, fontSize: 15, background: 'none' }}
+            className="main-nav-menu"
+          />
+          <ShoppingCartOutlined style={{ fontSize: 20, marginLeft: 16, color: '#222' }} />
+        </div>
       </Header>
       <AntLayout>
         <Sider width={250} theme="light" style={{ 

@@ -35,7 +35,7 @@ router.post('/', async (req, res) => {
   try {
     const { employeeData, roleData } = req.body;
     const id = await employeeService.createEmployee(employeeData, roleData);
-    res.status(201).json({ id, message: '员工创建成功' });
+    res.status(201).json(id);
   } catch (error) {
     console.error('Error in POST /employees:', error);
     res.status(500).json({ message: '创建员工失败' });
